@@ -1,0 +1,101 @@
+# Architecture Overview
+
+This document provides a high-level architecture overview using a Mermaid diagram. I fixed the Mermaid parse issues (missing arrow tokens and non-ASCII hyphen characters) so the diagram should render correctly in Mermaid-capable viewers.
+
+> Tip: To view the diagram, open this file in a renderer that supports Mermaid (e.g., GitHub, VS Code with Mermaid preview, or mermaid.live).
+
+```mermaid
+flowchart LR
+  %% Clients and Edge
+  subgraph EDGE["Edge / Client Layer"]
+    Browser[Browser / Mobile App]
+    ThirdParty[Third-party Clients]
+  end
+
+  Browser -->|HTTP/HTTPS| CDN[CDN (Static Assets)]
+  ThirdParty -->|API Calls| APIGW[API Gateway / Public API]
+  CDN --> LB[Load Balancer]
+
+  %% Ingress & Web/API
+  LB --> Web[Web Servers (Static + SSR)]
+  LB --> APIGW
+
+  %% Application Layer
+  subgraph APP["Application Layer"]
+    APIGW --> App[Application Servers / Microservices]
+    App --> Cache[(Redis / In-memory Cache)]
+    App --> MQ[Message Queue (RabbitMQ / Kafka)]
+    App --> AuthSvc[Auth Service / Token Validator]
+    App --> Search[Search Service (Elasticsearch)]
+  end
+
+  %% Background processing and workers
+  subgraph WORKERS["Background & Async"]
+    MQ --> Worker[Background Workers / Job Runners]
+    Worker -->|writes| DB
+    Worker -->|writes| ObjectStore[(Object Storage / S3)]
+  end
+
+  %% Persistence
+  subgraph DATA["Storage & Persistence"]
+    DB[(Primary DB - PostgreSQL / MySQL)]
+    DB --> Replica[(Read Replica)]
+    ObjectStore[(Object Storage)]
+  end
+
+  %% Identity & External Auth
+  subgraph IDENTITY["Identity & Auth"]
+    Identity[(External Identity Provider)]
+    AuthSvc --> Identity
+  end
+
+  %% DevOps & Observability
+  subgraph OPS["DevOps & Observability"]
+    Repo[Git Repository]
+    CI[CI/CD Pipeline]
+    Deploy[Deployment System]
+    Monitoring[Monitoring & Logging (Prometheus / ELK)]
+    Tracing[Distributed Tracing (Jaeger / Zipkin)]
+    Backups[Backups & Snapshotting]
+  end
+
+  Repo --> CI --> Deploy --> App
+  Deploy --> Web
+  App -.-> Monitoring
+  App -.-> Tracing
+  DB -.-> Backups
+  ObjectStore -.-> Backups
+
+  %% Security & Network
+  WAF[Web Application Firewall]
+  LB --> WAF --> App
+
+  %% Arrows for readability
+  App --> DB
+  App --> ObjectStore
+  CDN -.-> Cache
+  Cache -- "cache hits" --> Web
+
+  style EDGE fill:#f9f,stroke:#333,stroke-width:1px
+  style APP fill:#efe,stroke:#333,stroke-width:1px
+  style WORKERS fill:#eef,stroke:#333,stroke-width:1px
+  style DATA fill:#ffe,stroke:#333,stroke-width:1px
+  style OPS fill:#f3f4f6,stroke:#333,stroke-width:1px
+  style IDENTITY fill:#fff3bf,stroke:#333,stroke-width:1px
+```
+
+Legend
+- CDN: Content Delivery Network for caching static assets close to users  
+- LB: Load Balancer distributing traffic across web/API instances  
+- API Gateway: routing, rate limiting, authentication for API requests  
+- App: stateless application instances (scale horizontally)  
+- Cache: low-latency store for frequently accessed data  
+- MQ + Workers: asynchronous/background job processing  
+- DB + Replica: primary for writes, replicas for read scaling  
+- Object Storage: large binary objects (uploads, backups)  
+- Auth Service + Identity Provider: authentication and token issuance/validation  
+- CI/CD, Monitoring, Tracing, Backups: operational tooling for delivery and reliability
+
+Notes
+- This is a generic template — adapt component choices (DB, MQ, cache, tracing) to your stack.  
+- For security, consider VPCs, private networks, encrypted storage, and IAM policies.
